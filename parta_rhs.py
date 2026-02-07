@@ -156,41 +156,54 @@ class RhsToothExtractor:
         return x_left, x_right
 
     def extract(self, original_image: np.ndarray) -> np.ndarray:
-        """
-        Main method: input raw camera image → output cropped tooth/plate region
-        
-        Returns:
-            cropped plate image (numpy array) or empty array if failed
-        """
         if original_image is None or original_image.size == 0:
             return np.array([])
         
-        # Crop top irrelevant part
         original_image = original_image[:, self.original_image_row_start:self.original_image_row_end, :]
         
-
         # Step 1: Perspective correction + column crop
         warped = self._warp_image(original_image)
 
         if warped.size == 0:
             return np.array([])
 
-        # Step 2: Detect gap locations (rises)
-        rise_points = self._find_plate_edge_points(warped)
+        # Step 2: Detect gap locations (drops or rises)
+        # (For LHS: drop_points; For RHS: rise_points)
+        points = self._find_plate_edge_points(warped)  # Renamed for generality
 
         # Step 3: Decide left-right boundaries of the plate
-        x_left, x_right = self._select_plate_region(rise_points, warped.shape[1])
+        x_left, x_right = self._select_plate_region(points, warped.shape[1])
 
-        # Step 4: Crop from the lowest detected point downward
-        if len(rise_points) > 0:
-            top_y = int(max([0] + rise_points)) + self.final_crop_top_margin
+        # Step 4: Recompute edge_y (top edge positions) on the tight top region
+        # (We need the actual y-values now, within x_left:x_right)
+        tight = warped[:100, :, :]
+        bilateral = cv.bilateralFilter(
+            tight,
+            d=self.bilateral_d,
+            sigmaColor=self.bilateral_sigmaColor,
+            sigmaSpace=self.bilateral_sigmaSpace
+        )
+        gray = bilateral[:, :, 1]
+        _, thresh = cv.threshold(gray, self.thresh_value, 250, cv.THRESH_BINARY)
+        sobelx = cv.Sobel(thresh, cv.CV_64F, 1, 0, ksize=self.sobel_ksize)
+        sobely = cv.Sobel(thresh, cv.CV_64F, 0, 1, ksize=self.sobel_ksize)
+        sobel_mag = cv.magnitude(sobelx, sobely)
+        edge_clean = cv.erode(sobel_mag, self.erode_kernel)
+        
+        edge_y = np.argmax(edge_clean > 0, axis=0).astype(float)
+        has_edge = np.any(edge_clean > 0, axis=0)
+        edge_y[~has_edge] = np.nan
+        
+        # Now set top_y to the max (lowest) edge_y in the plate region
+        plate_edge_y = edge_y[x_left:x_right]
+        if np.any(~np.isnan(plate_edge_y)):
+            top_y = int(np.nanmax(plate_edge_y)) + self.final_crop_top_margin
         else:
-            top_y = 0
+            top_y = 0  # Fallback if no edges detected
 
         cropped = warped[top_y:, x_left:x_right]
 
         if cropped.size == 0:
-            # Ultimate fallback
             return warped
 
         return cropped
