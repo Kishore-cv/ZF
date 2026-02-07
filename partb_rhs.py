@@ -29,8 +29,8 @@ class RhsToothExtractor:
         self.row_min        = 0
         self.row_max        = 1200
         
-        self.column_crop_min = 100
-        self.column_crop_max = 1100
+        self.column_crop_min = 80
+        self.column_crop_max = 1140
         
         # After warp → final width
         self.warped_width = self.col_max_bot - self.col_min_bot   # ≈ 260–280
@@ -47,10 +47,24 @@ class RhsToothExtractor:
         self.rise_threshold   = 5.0          # looking for upward rises (rhs)
         self.min_plate_dist   = 60
         self.max_plate_dist   = 120
-        self.default_spacing  = 150           # used in single-point fallback
+        self.default_spacing  = 130           # used in single-point fallback
         
         # We usually crop from the lowest detected point downward
         self.final_crop_top_margin = 0       # can increase if needed
+        
+        # This offset is used to remove potential cavilty edges that are very close to the detected point
+        self.remove_cavilty_offset = 30
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
     def _warp_image(self, img: np.ndarray) -> np.ndarray:
         """Apply perspective transform to straighten the view"""
@@ -78,9 +92,17 @@ class RhsToothExtractor:
         # Fixed column crop after warp
         warped = warped[ self.column_crop_min:self.column_crop_max,:]
         
-
-        
         return warped
+
+
+
+
+
+
+
+
+
+
 
     def _find_plate_edge_points(self, warped: np.ndarray) -> list[int]:
         """Detect the main **rises** (gaps) in the top edge of the plates - RHS"""
@@ -107,8 +129,7 @@ class RhsToothExtractor:
 
         # Clean a bit
         edge_clean = cv.erode(sobel_mag, self.erode_kernel)
-        
-  
+
 
         # Find the FIRST (top-most) strong edge pixel in each column
         edge_y = np.argmax(edge_clean > 0, axis=0).astype(float)
@@ -122,6 +143,16 @@ class RhsToothExtractor:
         rise_locations = np.where(dy > self.rise_threshold)[0]
         
         return rise_locations.tolist()
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
     def _select_plate_region(self, rise_points: list[int], img_width: int) -> tuple[int, int]:
         """
@@ -151,16 +182,25 @@ class RhsToothExtractor:
 
         second_x = np.clip(second_x, 0, img_width - 1)
 
-        x_left  = min(single_x, second_x)
+        x_left  = min(single_x, second_x) + self.remove_cavilty_offset 
         x_right = max(single_x, second_x)
 
         return x_left, x_right
+    
+    
+    
+    
+    
+    
+    
+    
 
     def extract(self, original_image: np.ndarray) -> np.ndarray:
         if original_image is None or original_image.size == 0:
             return np.array([])
         
         original_image = original_image[:, self.original_image_row_start:self.original_image_row_end, :]
+
         
         # Step 1: Perspective correction + column crop
         warped = self._warp_image(original_image)
@@ -201,13 +241,16 @@ class RhsToothExtractor:
             top_y = int(np.nanmax(plate_edge_y)) + self.final_crop_top_margin
         else:
             top_y = 0  # Fallback if no edges detected
-
         cropped = warped[top_y:, x_left:x_right]
 
         if cropped.size == 0:
             return warped
+        
 
         return cropped
+
+
+
 
 
 # ────────────────────────────────────────
@@ -217,15 +260,16 @@ if __name__ == "__main__":
     extractor = RhsToothExtractor()
 
     # Replace with your RHS camera image path
-    img = cv.imread("/home/dell/ZF/ZF/31.1.2026/6partb/20260131_162025/25320882/14.png")
+    img = cv.imread("/home/dell/ZF/ZF/31.1.2026/2partb/20260131_121930/25320882/42.png")
     
     if img is not None:
         result = extractor.extract(img)
         
+        print(result.shape)
+        
         plt.figure(figsize=(6,10))
         plt.imshow(cv.cvtColor(result, cv.COLOR_BGR2RGB))
         plt.title("RHS Extracted Tooth")
-        plt.axis('off')
         plt.show()
     else:
         print("Could not load image.")

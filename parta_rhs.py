@@ -22,8 +22,8 @@ class RhsToothExtractor:
 
         # ── Perspective correction parameters ──
         # These values usually need to be tuned differently from LHS
-        self.col_min_top    = 720          # ← adjust these for RHS camera
-        self.col_max_top    = 920
+        self.col_min_top    = 700          # ← adjust these for RHS camera
+        self.col_max_top    = 900
         self.col_min_bot    = 570
         self.col_max_bot    = 770
         self.row_min        = 0
@@ -47,10 +47,19 @@ class RhsToothExtractor:
         self.rise_threshold   = 5.0          # looking for upward rises (rhs)
         self.min_plate_dist   = 60
         self.max_plate_dist   = 120
-        self.default_spacing  = 150           # used in single-point fallback
+        self.default_spacing  = 120           # used in single-point fallback
         
         # We usually crop from the lowest detected point downward
         self.final_crop_top_margin = 0       # can increase if needed
+        
+        # This offset is used to remove potential cavity edges that are very close to the detected point
+        self.remove_cavity_offset = 10
+
+
+
+
+
+
 
     def _warp_image(self, img: np.ndarray) -> np.ndarray:
         """Apply perspective transform to straighten the view"""
@@ -77,10 +86,13 @@ class RhsToothExtractor:
         
         # Fixed column crop after warp
         warped = warped[ self.column_crop_min:self.column_crop_max,:]
-        
-   
-        
+                
         return warped
+
+
+
+
+
 
     def _find_plate_edge_points(self, warped: np.ndarray) -> list[int]:
         """Detect the main **rises** (gaps) in the top edge of the plates - RHS"""
@@ -107,8 +119,7 @@ class RhsToothExtractor:
 
         # Clean a bit
         edge_clean = cv.erode(sobel_mag, self.erode_kernel)
-   
-
+        
         # Find the FIRST (top-most) strong edge pixel in each column
         edge_y = np.argmax(edge_clean > 0, axis=0).astype(float)
 
@@ -121,6 +132,13 @@ class RhsToothExtractor:
         rise_locations = np.where(dy > self.rise_threshold)[0]
         
         return rise_locations.tolist()
+
+
+
+
+
+
+
 
     def _select_plate_region(self, rise_points: list[int], img_width: int) -> tuple[int, int]:
         """
@@ -150,12 +168,20 @@ class RhsToothExtractor:
 
         second_x = np.clip(second_x, 0, img_width - 1)
 
-        x_left  = min(single_x, second_x)
-        x_right = max(single_x, second_x)
+        x_left  = min(single_x, second_x) + self.remove_cavity_offset  # add offset to avoid cavity edges
+        x_right = max(single_x, second_x) + 0
 
         return x_left, x_right
 
+
+
+
+
+
+
+
     def extract(self, original_image: np.ndarray) -> np.ndarray:
+        
         if original_image is None or original_image.size == 0:
             return np.array([])
         
@@ -184,10 +210,14 @@ class RhsToothExtractor:
             sigmaSpace=self.bilateral_sigmaSpace
         )
         gray = bilateral[:, :, 1]
+        
+        
         _, thresh = cv.threshold(gray, self.thresh_value, 250, cv.THRESH_BINARY)
         sobelx = cv.Sobel(thresh, cv.CV_64F, 1, 0, ksize=self.sobel_ksize)
         sobely = cv.Sobel(thresh, cv.CV_64F, 0, 1, ksize=self.sobel_ksize)
         sobel_mag = cv.magnitude(sobelx, sobely)
+        
+        
         edge_clean = cv.erode(sobel_mag, self.erode_kernel)
         
         edge_y = np.argmax(edge_clean > 0, axis=0).astype(float)
@@ -216,15 +246,16 @@ if __name__ == "__main__":
     extractor = RhsToothExtractor()
 
     # Replace with your RHS camera image path
-    img = cv.imread("/home/dell/ZF/ZF/31.1.2026/1parta/20260131_112541/25320882/21.png")
+    img = cv.imread("/home/dell/ZF/ZF/31.1.2026/1parta/20260131_112541/25320882/42.png")
     
     if img is not None:
         result = extractor.extract(img)
         
+        print(result.shape)
+        
         plt.figure(figsize=(6,10))
         plt.imshow(cv.cvtColor(result, cv.COLOR_BGR2RGB))
         plt.title("RHS Extracted Tooth")
-        plt.axis('off')
         plt.show()
     else:
         print("Could not load image.")

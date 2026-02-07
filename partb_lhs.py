@@ -45,7 +45,7 @@ class LhsToothExtractor:
         self.drop_threshold   = -5.0          # looking for downward drops (lhs)
         self.min_plate_dist   = 60
         self.max_plate_dist   = 120
-        self.default_spacing  = 90            # used in single-point fallback
+        self.default_spacing  = 100            # used in single-point fallback
         
         # We usually crop from the lowest detected point downward
         self.final_crop_top_margin = 10        # can increase if needed
