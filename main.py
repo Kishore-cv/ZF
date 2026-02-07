@@ -21,8 +21,7 @@ def prepare_dataset():
         '/home/dell/ZF/ZF/31.1.2026',
         '/home/dell/ZF/ZF/2-2-2026/2.2.2026'
     ]
-
-    # Output base directory
+ 
     output_base = '/home/dell/ZF/Dataset'
     os.makedirs(output_base, exist_ok=True)
 
