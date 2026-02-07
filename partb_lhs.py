@@ -45,10 +45,15 @@ class LhsToothExtractor:
         self.drop_threshold   = -5.0          # looking for downward drops (lhs)
         self.min_plate_dist   = 60
         self.max_plate_dist   = 120
-        self.default_spacing  = 100            # used in single-point fallback
+        self.default_spacing  = 110            # used in single-point fallback
         
         # We usually crop from the lowest detected point downward
         self.final_crop_top_margin = 10        # can increase if needed
+        
+        # This offset is used to remove potential cavilty edges that are very close to the detected point
+        self.remove_cavilty_offset = 10
+        
+        
         
         
 
@@ -76,11 +81,13 @@ class LhsToothExtractor:
         
         # Fixed column crop after warp
         warped = warped[self.column_crop_min:self.column_crop_max,:]
-        
 
-        
 
         return warped
+    
+    
+    
+    
 
     def _find_plate_edge_points(self, warped: np.ndarray) -> list[int]:
         """Detect the main drops (gaps) in the top edge of the plates"""
@@ -107,7 +114,7 @@ class LhsToothExtractor:
 
         # Clean a bit
         edge_clean = cv.erode(sobel_mag, self.erode_kernel)
-  
+        
 
         # Find the FIRST (top-most) strong edge pixel in each column
         edge_y = np.argmax(edge_clean > 0, axis=0).astype(float)
@@ -121,6 +128,12 @@ class LhsToothExtractor:
         drop_locations = np.where(dy < self.drop_threshold)[0]
 
         return drop_locations.tolist()
+    
+    
+    
+    
+    
+    
 
     def _select_plate_region(self, drop_points: list[int], img_width: int) -> tuple[int, int]:
         """
@@ -149,10 +162,15 @@ class LhsToothExtractor:
 
         second_x = np.clip(second_x, 0, img_width - 1)
 
-        x_left = min(single_x, second_x)
+        x_left = min(single_x, second_x) + self.remove_cavilty_offset
         x_right = max(single_x, second_x)
 
         return x_left, x_right
+    
+    
+    
+    
+    
 
     def extract(self, original_image: np.ndarray) -> np.ndarray:
         """
@@ -166,9 +184,6 @@ class LhsToothExtractor:
         
         original_image = original_image[:,self.original_image_row_start:self.original_image_row_end,:]
         
-   
-
-
         # Step 1: Perspective correction + column crop
         warped = self._warp_image(original_image)
 
@@ -210,7 +225,7 @@ if __name__ == "__main__":
     if img is not None:
         result = extractor.extract(img)
 
-
+        print("Shape of result : ",result.shape)
         plt.imshow(result)
         plt.show()
         
